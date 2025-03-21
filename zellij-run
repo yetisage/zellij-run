@@ -1,4 +1,4 @@
-#!/usr/bin/env sh
+#!/usr/bin/env bash
 
 # Default pane name
 pane_name="Command Output"
@@ -7,33 +7,33 @@ c_flag_used=false
 
 # Parse options
 while getopts ":n:c:h" opt; do
-    case $opt in
+  case $opt in
     n) pane_name="$OPTARG" ;;
     c)
-        command_string="$OPTARG"
-        c_flag_used=true
-        ;;
+      command_string="$OPTARG"
+      c_flag_used=true
+      ;;
     h)
-        echo "Usage: $0 [-n pane_name] [-c 'commands to run'] ['commands to run']"
-        echo "Options:"
-        echo "  -n NAME    Set custom pane name (default: 'Command Output')"
-        echo "  -c CMD     Specify command to run (bash -c compatibility)"
-        echo "  -h         Show this help message"
-        exit 0
-        ;;
+      echo "Usage: $0 [-n pane_name] [-c 'commands to run'] ['commands to run']"
+      echo "Options:"
+      echo "  -n NAME    Set custom pane name (default: 'Command Output')"
+      echo "  -c CMD     Specify command to run (bash -c compatibility)"
+      echo "  -h         Show this help message"
+      exit 0
+      ;;
     \?)
-        echo "Invalid option: -$OPTARG" >&2
-        exit 1
-        ;;
+      echo "Invalid option: -$OPTARG" >&2
+      exit 1
+      ;;
     :)
-        echo "Option -$OPTARG requires an argument." >&2
-        exit 1
-        ;;
-    esac
+      echo "Option -$OPTARG requires an argument." >&2
+      exit 1
+      ;;
+  esac
 done
 
 # Shift to remove the options
-shift $((OPTIND - 1))
+shift $((OPTIND-1))
 
 # If -c wasn't used and there are remaining arguments, use them as the command
 if [ "$c_flag_used" = false ] && [ $# -gt 0 ]; then
@@ -47,11 +47,108 @@ if [ -z "$command_string" ]; then
     exit 1
 fi
 
-# Check if zellij is running
-if [ -n "$ZELLIJ" ]; then
-    # Zellij is running, use zellij run
-    zellij run -c --name "$pane_name" -- bash -c "$command_string"
-else
-    # Zellij is not running, fall back to regular bash
-    bash -c "$command_string"
-fi
+# Function to securely pass environment to a new zellij pane
+run_with_env() {
+    local cmd="$1"
+    local pane="$2"
+
+    # Add a random component to prevent predictable filenames
+    local random_suffix=$(head -c 16 /dev/urandom | xxd -p)
+
+    # Create a secure temp file (preferably in memory)
+    local env_file
+    if [ -d "/dev/shm" ]; then
+        # Use in-memory filesystem if available (Linux)
+        env_file=$(mktemp -p /dev/shm "zellij_env_${random_suffix}.XXXXXX")
+    elif [ -d "/tmp" ]; then
+        # Regular tmp directory (macOS/other)
+        env_file=$(mktemp "/tmp/zellij_env_${random_suffix}.XXXXXX")
+    else
+        # Fallback to current directory
+        env_file=$(mktemp "./zellij_env_${random_suffix}.XXXXXX")
+    fi
+
+    # Create a flag file to indicate when the env has been read
+    local flag_file="${env_file}.done"
+
+    # Ensure temp file is secure
+    chmod 600 "$env_file"
+
+    # List of sensitive environment variables to filter out
+    local sensitive_vars=(
+        "AWS_SECRET_ACCESS_KEY"
+        "AWS_SESSION_TOKEN"
+        "GITHUB_TOKEN"
+        "NPM_TOKEN"
+        "PASSWORD"
+        "PASSPHRASE"
+        "SECRET"
+        "TOKEN"
+        "API_KEY"
+    )
+
+    # Export current environment to the file, properly escaped
+    while IFS='=' read -r key value; do
+        # Skip empty lines and variables starting with _
+        [ -z "$key" ] || [[ "$key" == _* ]] && continue
+
+        # Skip sensitive variables (case insensitive check)
+        skip=false
+        for sensitive in "${sensitive_vars[@]}"; do
+            if [[ "${key^^}" == *"${sensitive^^}"* ]]; then
+                skip=true
+                break
+            fi
+        done
+        [ "$skip" = true ] && continue
+
+        # Properly escape the value to handle special characters
+        escaped_value=$(printf '%q' "$value")
+        echo "export $key=$escaped_value" >> "$env_file"
+    done < <(env)
+
+    # The command that sources env vars, signals completion, and runs the user command
+    # We use a two-step approach to ensure proper file handling
+    local wrapped_cmd="
+    if [ -f \"$env_file\" ]; then
+        source \"$env_file\"
+        touch \"$flag_file\"  # Signal that we've read the environment
+        $cmd
+    else
+        echo \"Error: Environment file not found. Command may not have proper environment.\"
+        $cmd
+    fi"
+
+    # Run in zellij or fallback to bash
+    if [ -n "$ZELLIJ" ]; then
+        # In an active zellij session
+        zellij run -c --name "$pane" -- bash -c "$wrapped_cmd" &
+    else
+        # Try zellij, fall back to bash if needed
+        zellij run -c --name "$pane" -- bash -c "$wrapped_cmd" 2>/dev/null || bash -c "$cmd" &
+    fi
+
+    # Store the background process PID
+    local zellij_pid=$!
+
+    # Wait for either:
+    # 1. The flag file to appear (indicating env was successfully read)
+    # 2. A reasonable timeout (5 seconds)
+    local timeout=50  # 50 iterations of 0.1s = 5 seconds
+    local counter=0
+
+    while [ $counter -lt $timeout ] && [ ! -f "$flag_file" ] && kill -0 $zellij_pid 2>/dev/null; do
+        sleep 0.1
+        counter=$((counter + 1))
+    done
+
+    # Now it's safe to remove both files
+    [ -f "$env_file" ] && rm -f "$env_file"
+    [ -f "$flag_file" ] && rm -f "$flag_file"
+
+    # Wait for the zellij process to complete
+    wait $zellij_pid 2>/dev/null || true
+}
+
+# Execute command with environment variables properly passed
+run_with_env "$command_string" "$pane_name"
