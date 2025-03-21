@@ -122,10 +122,10 @@ run_with_env() {
     # Run in zellij or fallback to bash
     if [ -n "$ZELLIJ" ]; then
         # In an active zellij session
-        zellij run --name "$pane" -- bash -c "$wrapped_cmd" &
+        zellij run -c --name "$pane" -- bash -c "$wrapped_cmd" &
     else
         # Try zellij, fall back to bash if needed
-        zellij run --name "$pane" -- bash -c "$wrapped_cmd" 2>/dev/null || bash -c "$cmd" &
+        zellij run -c --name "$pane" -- bash -c "$wrapped_cmd" 2>/dev/null || bash -c "$cmd" &
     fi
 
     # Store the background process PID
