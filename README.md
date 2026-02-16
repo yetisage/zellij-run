@@ -41,7 +41,7 @@ source ~/.bash_profile
 
 ```bash
 # Install using homebrew
-brew tap yourusername/tap ~/homebrew-tap
+brew tap yetisage/scripts ~/homebrew-tap
 brew install zellij-run
 ```
 
