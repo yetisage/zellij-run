@@ -26,7 +26,7 @@ A bash utility script that wraps commands in Zellij panes when available, with g
 mkdir -p ~/bin
 
 # Download the script
-curl -o ~/bin/zellij-run https://path-to-raw-script/zellij-run
+curl -o ~/bin/zellij-run https://raw.githubusercontent.com/yetisage/zellij-run/refs/heads/main/zellij-run
 # or manually create and paste the script content
 
 # Make it executable
