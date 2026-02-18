@@ -7,7 +7,7 @@ c_flag_used=false
 float_flag=""
 
 # Parse options
-while getopts ":n:c:h:f" opt; do
+while getopts ":n:c:hf" opt; do
   case $opt in
     n) pane_name="$OPTARG" ;;
     f) float_flag="-f";;
@@ -20,7 +20,7 @@ while getopts ":n:c:h:f" opt; do
       echo "Options:"
       echo "  -n NAME    Set custom pane name (default: 'Command Output')"
       echo "  -c CMD     Specify command to run (bash -c compatibility)"
-      echo "  -f         Open the command in a floating window"
+      echo "  -f         Open the command in a floating pane"
       echo "  -h         Show this help message"
       exit 0
       ;;
