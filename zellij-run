@@ -4,11 +4,13 @@
 pane_name="Command Output"
 command_string=""
 c_flag_used=false
+float_flag=""
 
 # Parse options
-while getopts ":n:c:h" opt; do
+while getopts ":n:c:hf" opt; do
   case $opt in
     n) pane_name="$OPTARG" ;;
+    f) float_flag="-f";;
     c)
       command_string="$OPTARG"
       c_flag_used=true
@@ -18,6 +20,7 @@ while getopts ":n:c:h" opt; do
       echo "Options:"
       echo "  -n NAME    Set custom pane name (default: 'Command Output')"
       echo "  -c CMD     Specify command to run (bash -c compatibility)"
+      echo "  -f         Open the command in a floating pane"
       echo "  -h         Show this help message"
       exit 0
       ;;
@@ -122,10 +125,10 @@ run_with_env() {
     # Run in zellij or fallback to bash
     if [ -n "$ZELLIJ" ]; then
         # In an active zellij session
-        zellij run -c --name "$pane" -- bash -c "$wrapped_cmd" &
+        zellij run -c $float_flag --name "$pane" -- bash -c "$wrapped_cmd" &
     else
         # Try zellij, fall back to bash if needed
-        zellij run -c --name "$pane" -- bash -c "$wrapped_cmd" 2>/dev/null || bash -c "$cmd" &
+        zellij run -c $float_flag --name "$pane" -- bash -c "$wrapped_cmd" 2>/dev/null || bash -c "$cmd" &
     fi
 
     # Store the background process PID
